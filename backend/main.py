@@ -1,4 +1,4 @@
-
+import os
 import asyncio
 import ipaddress
 import logging
@@ -40,19 +40,29 @@ app = FastAPI(
 # CORS
 # --------------------------------------------------
 
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "")
+
+allowed_origins = [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
+]
+
+if FRONTEND_ORIGIN:
+    allowed_origins.extend(
+        origin.strip()
+        for origin in FRONTEND_ORIGIN.split(",")
+        if origin.strip()
+    )
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5174"
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["*"]
 )
-
 
 # --------------------------------------------------
 # URL VALIDATION
