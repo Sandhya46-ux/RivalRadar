@@ -1,3 +1,4 @@
+
 import os
 import asyncio
 import ipaddress
@@ -32,12 +33,15 @@ logger = logging.getLogger("RivalRadar")
 app = FastAPI(
     title="RivalRadar API",
     description="AI-powered competitor intelligence platform",
-    version="1.0.0"
+    version="1.0.0",
+    docs_url="/docs",
+    openapi_url="/openapi.json",
+    redoc_url="/redoc"
 )
 
 
 # --------------------------------------------------
-# CORS
+# CORS CONFIGURATION
 # --------------------------------------------------
 
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "")
@@ -51,7 +55,7 @@ allowed_origins = [
 
 if FRONTEND_ORIGIN:
     allowed_origins.extend(
-        origin.strip()
+        origin.strip().rstrip("/")
         for origin in FRONTEND_ORIGIN.split(",")
         if origin.strip()
     )
@@ -60,9 +64,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"]
 )
+
 
 # --------------------------------------------------
 # URL VALIDATION
@@ -105,7 +110,6 @@ def check_public_url(url: str):
             )
 
         for address in addresses:
-
             ip = ipaddress.ip_address(address[4][0])
 
             if not ip.is_global:
@@ -120,22 +124,24 @@ def check_public_url(url: str):
 
 
 # --------------------------------------------------
-# ROOT
+# ROOT ENDPOINT
 # --------------------------------------------------
 
-@app.get("/")
+@app.get("/", tags=["Health"])
 async def root():
     return {
         "message": "Welcome to RivalRadar API",
-        "status": "running"
+        "status": "running",
+        "docs": "/docs",
+        "health": "/health"
     }
 
 
 # --------------------------------------------------
-# HEALTH
+# HEALTH ENDPOINT
 # --------------------------------------------------
 
-@app.get("/health")
+@app.get("/health", tags=["Health"])
 async def health():
     return {
         "status": "healthy",
@@ -144,19 +150,19 @@ async def health():
 
 
 # --------------------------------------------------
-# INVESTIGATION
+# INVESTIGATION ENDPOINT
 # --------------------------------------------------
 
 @app.post(
     "/api/investigate",
-    response_model=InvestigationResponse
+    response_model=InvestigationResponse,
+    tags=["Investigation"]
 )
 async def investigate(request: InvestigationRequest):
 
     logger.info("INVESTIGATION REQUEST RECEIVED")
 
     try:
-
         company_url = str(request.company_url)
 
         competitor_urls = [
@@ -171,16 +177,21 @@ async def investigate(request: InvestigationRequest):
                 "Only one company and up to three competitors are allowed."
             )
 
-        logger.info("Validating %s website(s)", len(all_urls))
+        logger.info(
+            "Validating %s website(s)",
+            len(all_urls)
+        )
 
         for url in all_urls:
-            await asyncio.to_thread(check_public_url, url)
+            await asyncio.to_thread(
+                check_public_url,
+                url
+            )
 
         logger.info("URL VALIDATION SUCCESSFUL")
 
         logger.info(
-            "STARTING TINYFISH QUEUE-AND-POLL "
-            "AND GEMINI INVESTIGATION"
+            "STARTING TINYFISH AND GEMINI INVESTIGATION"
         )
 
         result = await asyncio.wait_for(
@@ -191,7 +202,9 @@ async def investigate(request: InvestigationRequest):
             timeout=720
         )
 
-        logger.info("INVESTIGATION COMPLETED SUCCESSFULLY")
+        logger.info(
+            "INVESTIGATION COMPLETED SUCCESSFULLY"
+        )
 
         return result
 
@@ -209,7 +222,10 @@ async def investigate(request: InvestigationRequest):
 
     except ValueError as exc:
 
-        logger.warning("VALIDATION ERROR: %s", exc)
+        logger.warning(
+            "VALIDATION ERROR: %s",
+            exc
+        )
 
         raise HTTPException(
             status_code=400,
@@ -221,13 +237,15 @@ async def investigate(request: InvestigationRequest):
 
     except Exception:
 
-        logger.exception("INVESTIGATION FAILED")
+        logger.exception(
+            "INVESTIGATION FAILED"
+        )
 
         raise HTTPException(
             status_code=502,
             detail=(
                 "Investigation failed. "
-                "Check the backend terminal for details."
+                "Check backend logs for details."
             )
         )
 
@@ -239,9 +257,31 @@ async def investigate(request: InvestigationRequest):
 @app.on_event("startup")
 async def startup_event():
 
+    logger.info("RIVALRADAR API STARTING")
+
     validate_config()
 
-    logger.info("RIVALRADAR API STARTED SUCCESSFULLY")
+    logger.info(
+        "REGISTERED ROUTES: %s",
+        [
+            route.path
+            for route in app.routes
+        ]
+    )
+
+    logger.info(
+        "OPENAPI URL: %s",
+        app.openapi_url
+    )
+
+    logger.info(
+        "DOCS URL: %s",
+        app.docs_url
+    )
+
+    logger.info(
+        "RIVALRADAR API STARTED SUCCESSFULLY"
+    )
 
 
 # --------------------------------------------------
@@ -251,4 +291,6 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
 
-    logger.info("RIVALRADAR API SHUTTING DOWN")
+    logger.info(
+        "RIVALRADAR API SHUTTING DOWN"
+    )
